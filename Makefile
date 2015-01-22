@@ -21,17 +21,17 @@ SDK_BASE	?= c:/Espressif/ESP8266_SDK
 #Esptool.py path and port
 PYTHON		?= C:\Python27\python.exe
 ESPTOOL		?= c:\Espressif\utils\esptool.py
-ESPPORT		?= COM3
+ESPPORT		?= COM7
 
 # name for the target project
 TARGET		= app
 
 # which modules (subdirectories) of the project to include in compiling
 MODULES		= driver mqtt user
-EXTRA_INCDIR    = include $(SDK_BASE)/../include
+EXTRA_INCDIR    = include
 
 # libraries used in this project, mainly provided by the SDK
-LIBS		= c gcc hal phy pp net80211 lwip wpa upgrade main ssl
+LIBS		= c gcc hal phy pp net80211 lwip wpa upgrade main ssl json
 
 # compiler flags using during compilation of source files
 CFLAGS		= -Os -Wpointer-arith -Wundef -Werror -Wl,-EL -fno-inline-functions -nostdlib -mlongcalls -mtext-section-literals  -D__ets__ -DICACHE_FLASH

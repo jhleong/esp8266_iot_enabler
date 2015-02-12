@@ -43,7 +43,7 @@ MQTT_Client mqttClient;
 
 #define DELAY 30000 /* milliseconds */
 
-LOCAL os_timer_t dht22_timer;
+LOCAL os_timer_t timer;
 LOCAL int relay_state = 0;
 
 
@@ -51,8 +51,13 @@ LOCAL int relay_state = 0;
 #define RELAY_GPIO_MUX PERIPHS_IO_MUX_GPIO0_U
 #define RELAY_GPIO_FUNC FUNC_GPIO0
 
-char YOUR_THINGSPEAK_API_KEY[] = "xxxxxxxxxxxxxxx";
-char YOUR_THINGSPEAK_CHANNEL[] = "xxxxx";
+// *** CHANGE CONFIG HERE ***
+LOCAL char YOUR_THINGSPEAK_API_KEY[]=  "xxxxxxxxxxxxxxxxx";
+LOCAL char YOUR_THINGSPEAK_CHANNEL[]= "xxxxxxxxx";
+LOCAL bool bRelayInputInverted       = true;
+
+
+LOCAL int  timer_count = 0;
 
 //
 // This function checks the response for last field1 value of Thingspeak
@@ -98,41 +103,51 @@ void http_post_callback(char * response, int http_status, char * full_response)
 }
 
 //
-// This function  reads the temperature and humidity
-// and publishes the data to the corresponding MQTT
-// topics as well as updating the appropriate fields
-// of the Thingspeak channel.
+// This function gets called every DELAY milliseconds.  On the 1st, 3rd, 5th, 7th and 9th
+// invocations, it will check the relay state from Thingspeak.  That is it does this every
+// minute if DELAY is 30000 millseconds.  On the 10th invocation, which is every 5 minutes,
+// it will send temperature and humidity data to MQTT and Thingspeak.
 //
-LOCAL void ICACHE_FLASH_ATTR dht22_cb(void *arg)
+LOCAL void ICACHE_FLASH_ATTR timer_callback(void *arg)
 {
+	// send_data_to_mqtt_and_thingspeak();
 	struct dht_sensor_data* r = DHTRead();
 	float lastTemp = r->temperature;
 	float lastHum = r->humidity;
 	char str_temp[64],str_hum[64];
 	char str_url[256];
 
-	if(r->success)
+	if ((timer_count==1) || (timer_count==3) || (timer_count==5) || (timer_count==7) || (timer_count==9))
 	{
-		// Send temperature and humidity data to MQTT broker
-		INFO("Temperature: %d.%d *C, Humidity: %d.%d %%\r\n", (int)(lastTemp),(int)((lastTemp - (int)lastTemp)*100), (int)(lastHum),(int)((lastHum - (int)lastHum)*100));
-		os_sprintf(str_temp,"%d.%d", (int)(lastTemp),(int)((lastTemp - (int)lastTemp)*100));
-		MQTT_Publish(&mqttClient, "/esp8266/temperature", str_temp, os_strlen(str_temp), 0, 0);
+		// Get last field1 value of Thingspeak channel that corresponds to the relay state
+		os_sprintf(str_url,"http://api.thingspeak.com/channels/%s/fields/field1/last",YOUR_THINGSPEAK_CHANNEL);
+		http_get(str_url, http_get_relay_state_callback);
 
-		os_sprintf(str_hum,"%d.%d", (int)(lastHum),(int)((lastHum - (int)lastHum)*100));
-		MQTT_Publish(&mqttClient, "/esp8266/humidity", str_hum, os_strlen(str_hum), 0, 0);
-
-		// Send temperature and humidity data to Thingspeak.com
-		os_sprintf(str_url,"http://api.thingspeak.com/update?key=%s&field2=%s&field3=%s",YOUR_THINGSPEAK_API_KEY,str_temp,str_hum);
-		http_post(str_url, "", http_post_callback);
 	}
-	else
+	else if (timer_count==10)
 	{
-		INFO("Error reading temperature and humidity\r\n");
+		if(r->success)
+		{
+			// Send temperature and humidity data to MQTT broker
+			INFO("Temperature: %d.%d *C, Humidity: %d.%d %%\r\n", (int)(lastTemp),(int)((lastTemp - (int)lastTemp)*100), (int)(lastHum),(int)((lastHum - (int)lastHum)*100));
+			os_sprintf(str_temp,"%d.%d", (int)(lastTemp),(int)((lastTemp - (int)lastTemp)*100));
+			MQTT_Publish(&mqttClient, "/esp8266/temperature", str_temp, os_strlen(str_temp), 0, 0);
+
+			os_sprintf(str_hum,"%d.%d", (int)(lastHum),(int)((lastHum - (int)lastHum)*100));
+			MQTT_Publish(&mqttClient, "/esp8266/humidity", str_hum, os_strlen(str_hum), 0, 0);
+
+			// Send temperature and humidity data to Thingspeak.com
+			os_sprintf(str_url,"http://api.thingspeak.com/update?key=%s&field2=%s&field3=%s",YOUR_THINGSPEAK_API_KEY,str_temp,str_hum);
+			http_post(str_url,"",http_post_callback);
+		}
+		else
+		{
+			INFO("Error reading temperature and humidity\r\n");
+		}
+		timer_count = 1;
 	}
 
-    // Get last field1 value of Thingspeak channel that corresponds to the relay state
-	os_sprintf(str_url,"http://api.thingspeak.com/channels/%s/fields/field1/last",YOUR_THINGSPEAK_CHANNEL);
-	http_get(str_url, http_get_relay_state_callback);
+	timer_count++;
 }
 
 void wifiConnectCb(uint8_t status)
@@ -185,21 +200,35 @@ void mqttDataCb(uint32_t *args, const char* topic, uint32_t topic_len, const cha
 	{
 		if((os_strcmp(dataBuf,"on") == 0) || (os_strcmp(dataBuf,"ON") == 0))
 		{
-			GPIO_OUTPUT_SET(RELAY_GPIO, 1);
+			if(bRelayInputInverted)
+			{
+			    GPIO_OUTPUT_SET(RELAY_GPIO, 0);
+			}
+			else
+			{
+			    GPIO_OUTPUT_SET(RELAY_GPIO, 1);
+			}
             relay_state = 1;
 
 			// Send relay state to Thingspeak.com
 			os_sprintf(str_url,"http://api.thingspeak.com/update?key=%s&field1=1.0", YOUR_THINGSPEAK_API_KEY);
-			http_post(str_url, "", http_post_callback);
+			http_post(str_url,"",http_post_callback);
 		}
 		else if((os_strcmp(dataBuf,"off") == 0) || (os_strcmp(dataBuf,"OFF") == 0))
 		{
-			GPIO_OUTPUT_SET(RELAY_GPIO, 0);
+			if(bRelayInputInverted)
+			{
+			    GPIO_OUTPUT_SET(RELAY_GPIO, 1);
+			}
+			else
+			{
+			    GPIO_OUTPUT_SET(RELAY_GPIO, 0);
+			}
             relay_state = -1;
 
 			// Send relay state to Thingspeak.com
 			os_sprintf(str_url,"http://api.thingspeak.com/update?key=%s&field1=-1.0", YOUR_THINGSPEAK_API_KEY);
-			http_post(str_url, "", http_post_callback);
+			http_post(str_url,"",http_post_callback);
 		}
 	}
 }
@@ -211,11 +240,11 @@ void user_init(void)
 {
 	// Initialize GPIO0
 	PIN_FUNC_SELECT(RELAY_GPIO_MUX, RELAY_GPIO_FUNC);
-	GPIO_OUTPUT_SET(RELAY_GPIO, 0);
+	GPIO_OUTPUT_SET(RELAY_GPIO, 1);
 
 	// Initialize DHT11/22 sensor
 	uart_init(BIT_RATE_115200, BIT_RATE_115200);
-	DHTInit(DHT11, 2000);
+	DHTInit(DHT22, 2000);
 
 	// Load the WiFi and MQTT login details from /include/user_config.h
 	CFG_Load();
@@ -233,10 +262,10 @@ void user_init(void)
 	MQTT_OnPublished(&mqttClient, mqttPublishedCb);
 	MQTT_OnData(&mqttClient, mqttDataCb);
 
-	// Start a timer that calls dht22_cb every 30 seconds.
-	os_timer_disarm(&dht22_timer);
-	os_timer_setfn(&dht22_timer, (os_timer_func_t *)dht22_cb, (void *)0);
-	os_timer_arm(&dht22_timer, DELAY, 1);
+	// Start a timer that calls timer_callback every DELAY milliseconds.
+	os_timer_disarm(&timer);
+	os_timer_setfn(&timer, (os_timer_func_t *)timer_callback, (void *)0);
+	os_timer_arm(&timer, DELAY, 1);
 
 	INFO("\r\nSystem started ...\r\n");
 }

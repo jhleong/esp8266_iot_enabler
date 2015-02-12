@@ -1,3 +1,6 @@
+Instructables page:
+http://www.instructables.com/id/An-inexpensive-IoT-enabler-using-ESP8266/
+
 ESP8266 IoT enabler
 	- Sends temperature/humidity readings from a DHT11 sensor
 	  to a MQTT broker and a Thingspeak channel

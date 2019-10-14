@@ -122,12 +122,12 @@ struct dht_sensor_data *ICACHE_FLASH_ATTR DHTCb(void)
 
     if (j >= 39) {
         checksum = (data[0] + data[1] + data[2] + data[3]) & 0xFF;
-        os_printf("DHT: %02x %02x %02x %02x [%02x] CS: %02x", data[0], data[1],data[2],data[3],data[4],checksum);
+        //os_printf("DHT: %02x %02x %02x %02x [%02x] CS: %02x", data[0], data[1],data[2],data[3],data[4],checksum);
         if (data[4] == checksum) {
             // checksum is valid
         	reading.temperature = scale_temperature(data);
         	reading.humidity = scale_humidity(data);
-        	os_printf("Temperature =  %d *C, Humidity = %d %%\r\n", (int)(reading.temperature * 100), (int)(reading.humidity * 100));
+        	//os_printf("Temperature =  %d *C, Humidity = %d %%\r\n", (int)(reading.temperature * 100), (int)(reading.humidity * 100));
             reading.success = 1;
         } else {
             os_printf("Checksum was incorrect after %d bits. Expected %d but got %d\r\n", j, data[4], checksum);

@@ -41,7 +41,7 @@
 
 MQTT_Client mqttClient;
 
-#define DELAY 30000 /* milliseconds */
+#define DELAY 5000 /* milliseconds */
 
 LOCAL os_timer_t timer;
 LOCAL int relay_state = 0;
@@ -52,9 +52,9 @@ LOCAL int relay_state = 0;
 #define RELAY_GPIO_FUNC FUNC_GPIO0
 
 // *** CHANGE CONFIG HERE ***
-LOCAL char YOUR_THINGSPEAK_API_KEY[]=  "xxxxxxxxxxxxxxxxx";
-LOCAL char YOUR_THINGSPEAK_CHANNEL[]= "xxxxxxxxx";
-LOCAL bool bRelayInputInverted       = true;
+LOCAL char YOUR_THINGSPEAK_API_KEY[]= "FOVT1C8M439QVDUW";
+LOCAL char YOUR_THINGSPEAK_CHANNEL[]= "31303";
+LOCAL bool bRelayInputInverted       = false;
 
 
 LOCAL int  timer_count = 0;
@@ -70,7 +70,7 @@ void http_get_relay_state_callback(char * response, int http_status, char * full
 	INFO("In http_get_relay_state_callback... http_status=%d\n", http_status);
 //  os_printf("strlen(response)=%d\n", strlen(response));
 //	os_printf("strlen(full_response)=%d\n", strlen(full_response));
-	os_printf("response===%s===\n", response);
+//	os_printf("response===%s===\n", response);
 
 	if (ets_strstr(response,"-1.0"))
 	{
@@ -79,7 +79,7 @@ void http_get_relay_state_callback(char * response, int http_status, char * full
 			relay_state = -1;
 			INFO("Sending off to /esp8266/relay...\n");
 		    os_sprintf(str,"off");
-		    MQTT_Publish(&mqttClient, "/esp8266/relay", str, os_strlen(str), 0, 0);
+		    MQTT_Publish(&mqttClient, "/esp8266/relay", str, os_strlen(str), 0, 1);
 		}
 	}
 	else if (ets_strstr(response,"1.0"))
@@ -89,7 +89,7 @@ void http_get_relay_state_callback(char * response, int http_status, char * full
 			relay_state = 1;
 			INFO("Sending on to /esp8266/relay...\n");
 			os_sprintf(str,"on");
-			MQTT_Publish(&mqttClient, "/esp8266/relay", str, os_strlen(str), 0, 0);
+			MQTT_Publish(&mqttClient, "/esp8266/relay", str, os_strlen(str), 0, 1);
 		}
 	}
 }
@@ -99,7 +99,7 @@ void http_post_callback(char * response, int http_status, char * full_response)
 	INFO("In http_post_callback... http_status=%d\n", http_status);
 //	os_printf("strlen(response)=%d\n", strlen(response));
 //	os_printf("strlen(full_response)=%d\n", strlen(full_response));
-	os_printf("response===%s===\n", response);
+//	os_printf("response===%s===\n", response);
 }
 
 //
@@ -117,6 +117,7 @@ LOCAL void ICACHE_FLASH_ATTR timer_callback(void *arg)
 	char str_temp[64],str_hum[64];
 	char str_url[256];
 
+/*
 	if ((timer_count==1) || (timer_count==3) || (timer_count==5) || (timer_count==7) || (timer_count==9))
 	{
 		// Get last field1 value of Thingspeak channel that corresponds to the relay state
@@ -124,30 +125,33 @@ LOCAL void ICACHE_FLASH_ATTR timer_callback(void *arg)
 		http_get(str_url, http_get_relay_state_callback);
 
 	}
-	else if (timer_count==10)
-	{
+	else
+*/
+		timer_count++;
+
 		if(r->success)
 		{
 			// Send temperature and humidity data to MQTT broker
-			INFO("Temperature: %d.%d *C, Humidity: %d.%d %%\r\n", (int)(lastTemp),(int)((lastTemp - (int)lastTemp)*100), (int)(lastHum),(int)((lastHum - (int)lastHum)*100));
-			os_sprintf(str_temp,"%d.%d", (int)(lastTemp),(int)((lastTemp - (int)lastTemp)*100));
-			MQTT_Publish(&mqttClient, "/esp8266/temperature", str_temp, os_strlen(str_temp), 0, 0);
+			INFO("Temperature: %d.%d *C, Humidity: %d.%d %%\r\n", (int)(lastTemp),(int)((lastTemp - (int)lastTemp)*10), (int)(lastHum),(int)((lastHum - (int)lastHum)*10));
+			os_sprintf(str_temp,"%d.%d", (int)(lastTemp),(int)((lastTemp - (int)lastTemp)*10));
+			MQTT_Publish(&mqttClient, "/esp8266/temperature", str_temp, os_strlen(str_temp), 0, 1);
 
-			os_sprintf(str_hum,"%d.%d", (int)(lastHum),(int)((lastHum - (int)lastHum)*100));
-			MQTT_Publish(&mqttClient, "/esp8266/humidity", str_hum, os_strlen(str_hum), 0, 0);
+			os_sprintf(str_hum,"%d.%d", (int)(lastHum),(int)((lastHum - (int)lastHum)*10));
+			MQTT_Publish(&mqttClient, "/esp8266/humidity", str_hum, os_strlen(str_hum), 0, 1);
 
-			// Send temperature and humidity data to Thingspeak.com
-			os_sprintf(str_url,"http://api.thingspeak.com/update?key=%s&field2=%s&field3=%s",YOUR_THINGSPEAK_API_KEY,str_temp,str_hum);
-			http_post(str_url,"",http_post_callback);
+			if(timer_count > 12){
+				// Send temperature and humidity data to Thingspeak.com
+				os_sprintf(str_url,"http://api.thingspeak.com/update?key=%s&field2=%s&field3=%s",
+					YOUR_THINGSPEAK_API_KEY,str_temp,str_hum);
+				http_post(str_url,"",http_post_callback);
+				timer_count = 0;
+			}
 		}
 		else
 		{
 			INFO("Error reading temperature and humidity\r\n");
 		}
-		timer_count = 1;
-	}
 
-	timer_count++;
 }
 
 void wifiConnectCb(uint8_t status)
@@ -161,9 +165,9 @@ void mqttConnectedCb(uint32_t *args)
 {
 	MQTT_Client* client = (MQTT_Client*)args;
 	INFO("MQTT: Connected\r\n");
-	MQTT_Subscribe(&mqttClient, "/esp8266/temperature", 2);
-	MQTT_Subscribe(&mqttClient, "/esp8266/humidity", 2);
-    MQTT_Subscribe(&mqttClient, "/esp8266/relay", 2);
+//	MQTT_Subscribe(&mqttClient, "/esp8266/temperature", 2);
+//	MQTT_Subscribe(&mqttClient, "/esp8266/humidity", 2);
+    	MQTT_Subscribe(&mqttClient, "/esp8266/relay", 2);
 }
 
 void mqttDisconnectedCb(uint32_t *args)
@@ -211,8 +215,8 @@ void mqttDataCb(uint32_t *args, const char* topic, uint32_t topic_len, const cha
             relay_state = 1;
 
 			// Send relay state to Thingspeak.com
-			os_sprintf(str_url,"http://api.thingspeak.com/update?key=%s&field1=1.0", YOUR_THINGSPEAK_API_KEY);
-			http_post(str_url,"",http_post_callback);
+			//os_sprintf(str_url,"http://api.thingspeak.com/update?key=%s&field1=1.0", YOUR_THINGSPEAK_API_KEY);
+			//http_post(str_url,"",http_post_callback);
 		}
 		else if((os_strcmp(dataBuf,"off") == 0) || (os_strcmp(dataBuf,"OFF") == 0))
 		{
@@ -227,8 +231,8 @@ void mqttDataCb(uint32_t *args, const char* topic, uint32_t topic_len, const cha
             relay_state = -1;
 
 			// Send relay state to Thingspeak.com
-			os_sprintf(str_url,"http://api.thingspeak.com/update?key=%s&field1=-1.0", YOUR_THINGSPEAK_API_KEY);
-			http_post(str_url,"",http_post_callback);
+			//os_sprintf(str_url,"http://api.thingspeak.com/update?key=%s&field1=-1.0", YOUR_THINGSPEAK_API_KEY);
+			//http_post(str_url,"",http_post_callback);
 		}
 	}
 }
@@ -240,10 +244,11 @@ void user_init(void)
 {
 	// Initialize GPIO0
 	PIN_FUNC_SELECT(RELAY_GPIO_MUX, RELAY_GPIO_FUNC);
-	GPIO_OUTPUT_SET(RELAY_GPIO, 1);
+	GPIO_OUTPUT_SET(RELAY_GPIO, 0);
 
 	// Initialize DHT11/22 sensor
 	uart_init(BIT_RATE_115200, BIT_RATE_115200);
+
 	DHTInit(DHT22, 2000);
 
 	// Load the WiFi and MQTT login details from /include/user_config.h
@@ -252,7 +257,9 @@ void user_init(void)
 	os_delay_us(3000000);
 
 	// Connect to WiFi.
-	WIFI_Connect(sysCfg.sta_ssid, sysCfg.sta_pwd, wifiConnectCb);
+	os_printf("***CFG***ssid:[%s], pwd:[%s]\n", sysCfg.sta_ssid, sysCfg.sta_pwd);
+/*	WIFI_Connect(sysCfg.sta_ssid, sysCfg.sta_pwd, wifiConnectCb); */	
+	WIFI_Connect("<YOUR_WIFI_SID>", "<YOUR_WIFI_PASSWD>", wifiConnectCb);
 
 	// Initialize MQTT
 	MQTT_InitConnection(&mqttClient, sysCfg.mqtt_host, sysCfg.mqtt_port, SEC_NONSSL);
